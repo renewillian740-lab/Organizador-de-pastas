@@ -218,11 +218,13 @@ export function App() {
           {currentSection === 'inicio' && (
             <OrganizeDashboard
               customRules={customRules}
+              projectRootFolder={rootFolder}
               onNavigateToHistory={() => {
                 handleRefreshHistory();
                 setCurrentSection('historico');
               }}
               onNavigateToSettings={() => setCurrentSection('configuracoes')}
+              onNavigateToProjects={() => setCurrentSection('organizar')}
             />
           )}
 

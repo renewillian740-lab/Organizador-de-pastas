@@ -1,4 +1,5 @@
 export type OrganizationModelType =
+  | 'project_template'
   | 'client'
   | 'date'
   | 'project'
@@ -14,6 +15,8 @@ export interface FileItemInfo {
   handle?: any; // FileSystemFileHandle if available
   fileObject?: File;
   relativePath?: string;
+  parentDirHandle?: any; // Handle of the subfolder where file currently resides
+  isNestedInSubfolder?: boolean; // True if file was discovered inside an existing subfolder
 }
 
 export interface PlannedFileMove {

@@ -9,6 +9,51 @@ export function isFileSystemAccessSupported(): boolean {
 }
 
 /**
+ * Recursively scans directory handles, digging into subfolders to collect all files
+ */
+async function collectFilesFromDirectoryHandle(
+  currentDirHandle: any,
+  parentPath = ''
+): Promise<FileItemInfo[]> {
+  const files: FileItemInfo[] = [];
+
+  for await (const [name, handle] of (currentDirHandle as any).entries()) {
+    if (name.startsWith('.') || name === 'Thumbs.db') continue;
+    const relPath = parentPath ? `${parentPath}/${name}` : name;
+
+    if (handle.kind === 'file') {
+      try {
+        const fileObj = await handle.getFile();
+        files.push({
+          id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          name,
+          size: fileObj.size,
+          lastModified: fileObj.lastModified,
+          type: fileObj.type,
+          handle,
+          fileObject: fileObj,
+          relativePath: relPath,
+          parentDirHandle: currentDirHandle,
+          isNestedInSubfolder: Boolean(parentPath),
+        });
+      } catch (e) {
+        console.warn('Erro ao ler arquivo do handle:', name, e);
+      }
+    } else if (handle.kind === 'directory') {
+      // Recurse into existing subfolders!
+      try {
+        const subFiles = await collectFilesFromDirectoryHandle(handle, relPath);
+        files.push(...subFiles);
+      } catch (subErr) {
+        console.warn('Erro ao ler subpasta:', name, subErr);
+      }
+    }
+  }
+
+  return files;
+}
+
+/**
  * Prompts user to pick a folder on Mac using showDirectoryPicker
  */
 export async function pickFolderHandle(): Promise<{
@@ -25,31 +70,7 @@ export async function pickFolderHandle(): Promise<{
     startIn: 'desktop',
   });
 
-  const files: FileItemInfo[] = [];
-
-  // Read files in root of selected folder
-  for await (const [name, handle] of (dirHandle as any).entries()) {
-    if (handle.kind === 'file') {
-      // Ignore hidden macOS files (.DS_Store, etc.)
-      if (name.startsWith('.') || name === 'Thumbs.db') continue;
-
-      try {
-        const fileObj = await handle.getFile();
-        files.push({
-          id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-          name,
-          size: fileObj.size,
-          lastModified: fileObj.lastModified,
-          type: fileObj.type,
-          handle,
-          fileObject: fileObj,
-          relativePath: name,
-        });
-      } catch (e) {
-        console.warn('Não foi possível ler arquivo:', name, e);
-      }
-    }
-  }
+  const files = await collectFilesFromDirectoryHandle(dirHandle);
 
   return {
     dirHandle,
@@ -120,27 +141,7 @@ export async function scanDroppedItems(dataTransfer: DataTransfer): Promise<{
         try {
           const handle = await (item as any).getAsFileSystemHandle();
           if (handle && handle.kind === 'directory') {
-            const files: FileItemInfo[] = [];
-            for await (const [name, child] of (handle as any).entries()) {
-              if (child.kind === 'file') {
-                if (name.startsWith('.') || name === 'Thumbs.db') continue;
-                try {
-                  const fileObj = await child.getFile();
-                  files.push({
-                    id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-                    name,
-                    size: fileObj.size,
-                    lastModified: fileObj.lastModified,
-                    type: fileObj.type,
-                    handle: child,
-                    fileObject: fileObj,
-                    relativePath: name,
-                  });
-                } catch (e) {
-                  console.warn('Erro ao ler arquivo do handle:', name, e);
-                }
-              }
-            }
+            const files = await collectFilesFromDirectoryHandle(handle);
 
             if (files.length > 0) {
               return {
@@ -386,14 +387,19 @@ export async function executeOrganizationMoves(
         await writable.write(fileData);
         await writable.close();
 
-        // Safely remove original from root
-        await rootHandle.removeEntry(move.file.name);
+        // Safely remove original from parent directory (works whether nested in subfolder or root)
+        try {
+          const originDir = move.file.parentDirHandle || rootHandle;
+          await originDir.removeEntry(move.file.name);
+        } catch (remErr) {
+          console.warn('Não foi possível remover da pasta de origem:', remErr);
+        }
       }
 
       organizedCount++;
       movedFilesLog.push({
         fileName: uniqueName,
-        originalRelativePath: move.file.name,
+        originalRelativePath: move.file.relativePath || move.file.name,
         newRelativePath: `${move.targetFolder}/${uniqueName}`,
         fileHandle: sourceHandle,
         targetDirHandle: currentDir,
@@ -506,14 +512,23 @@ export function downloadMacOrganizeScript(folderName: string, plannedMoves: Plan
   }
   lines.push('');
 
-  // Move files
+  // Move files (including those located inside existing subfolders)
   for (const move of plannedMoves) {
     if (move.targetFolder) {
-      lines.push(`if [ -f "${move.file.name}" ]; then`);
+      const relPath = move.file.relativePath || move.file.name;
+      lines.push(`if [ -f "${relPath}" ]; then`);
+      lines.push(`  mv -n "${relPath}" "${move.targetFolder}/"`);
+      lines.push(`elif [ -f "${move.file.name}" ]; then`);
       lines.push(`  mv -n "${move.file.name}" "${move.targetFolder}/"`);
+      lines.push('else');
+      lines.push(`  find . -maxdepth 5 -name "${move.file.name}" ! -path "./${move.targetFolder}/*" -exec mv -n {} "${move.targetFolder}/" \\; 2>/dev/null`);
       lines.push('fi');
     }
   }
+
+  lines.push('');
+  lines.push('# Limpar subpastas antigas que ficaram vazias após a transferência');
+  lines.push('find . -mindepth 1 -type d -empty -not -path "*/.*" -delete 2>/dev/null');
 
   lines.push('');
   lines.push('echo ""');

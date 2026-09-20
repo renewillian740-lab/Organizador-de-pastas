@@ -36,16 +36,22 @@ import {
 import { ORGANIZATION_MODELS, planOrganization } from '../services/organization';
 import { addHistoryEntry, markHistoryItemAsUndone } from '../services/history';
 
+import { FolderNode } from '../types';
+
 interface OrganizeDashboardProps {
   customRules: CustomFileRule[];
+  projectRootFolder?: FolderNode;
   onNavigateToHistory: () => void;
   onNavigateToSettings: () => void;
+  onNavigateToProjects?: () => void;
 }
 
 export function OrganizeDashboard({
   customRules,
+  projectRootFolder,
   onNavigateToHistory,
   onNavigateToSettings,
+  onNavigateToProjects,
 }: OrganizeDashboardProps) {
   // Step state: 'select_folder' | 'select_model' | 'preview' | 'executing' | 'result'
   const [step, setStep] = useState<'select_folder' | 'select_model' | 'preview' | 'executing' | 'result'>('select_folder');
@@ -57,8 +63,8 @@ export function OrganizeDashboard({
   const [isDragging, setIsDragging] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
 
-  // Model selection
-  const [selectedModel, setSelectedModel] = useState<OrganizationModelType>('client');
+  // Model selection (defaults to project_template - MEUS PROJETOS)
+  const [selectedModel, setSelectedModel] = useState<OrganizationModelType>('project_template');
 
   // Preview data
   const [previewData, setPreviewData] = useState<OrganizationPreviewData | null>(null);
@@ -171,7 +177,7 @@ export function OrganizeDashboard({
   // 2. Select model & advance to Preview
   const handleProceedToPreview = (modelId: OrganizationModelType) => {
     setSelectedModel(modelId);
-    const planned = planOrganization(scannedFiles, modelId, customRules);
+    const planned = planOrganization(scannedFiles, modelId, customRules, projectRootFolder);
     setPreviewData(planned);
 
     // Expand all folders by default in preview
@@ -237,12 +243,16 @@ export function OrganizeDashboard({
 
       // Match files with native handle
       const movesWithHandles = previewData.plannedMoves.map((m) => {
-        const matching = picked.files.find((pf) => pf.name === m.file.name);
+        const matching =
+          picked.files.find((pf) => pf.relativePath === m.file.relativePath) ||
+          picked.files.find((pf) => pf.name === m.file.name);
         return {
           ...m,
           file: {
             ...m.file,
             handle: matching?.handle || m.file.handle,
+            parentDirHandle: matching?.parentDirHandle || m.file.parentDirHandle,
+            relativePath: matching?.relativePath || m.file.relativePath,
           },
         };
       });
