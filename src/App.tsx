@@ -4,15 +4,27 @@ import { FolderNode } from './types';
 import { calculateFolderStats } from './utils/macFolderUtils';
 import { MacTitleBar } from './components/MacTitleBar';
 import { MacSidebar } from './components/MacSidebar';
+import { MacNavSidebar, MainNavSection } from './components/MacNavSidebar';
 import { FinderTreeView } from './components/FinderTreeView';
 import { FinderColumnView } from './components/FinderColumnView';
 import { MacTerminalView } from './components/MacTerminalView';
 import { MacActionModal } from './components/MacActionModal';
 import { SavedTemplatesModal } from './components/SavedTemplatesModal';
+import { OrganizeDashboard } from './components/OrganizeDashboard';
+import { HistoryView } from './components/HistoryView';
+import { SettingsView } from './components/SettingsView';
+import { loadSavedRules, saveRules, resetRulesToDefault } from './services/rules';
+import { loadHistory } from './services/history';
+import { loadPreferences, savePreferences, resetPreferencesToDefault } from './services/settings';
+import { CustomFileRule, AppPreferences, OrganizationResultSummary } from './types/organizer';
 
 const STORAGE_KEY = 'mac_folder_custom_template_v1';
 
 export function App() {
+  // Navigation section
+  const [currentSection, setCurrentSection] = useState<MainNavSection>('inicio');
+
+  // Existing tree builder state
   const [rootFolder, setRootFolder] = useState<FolderNode>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -31,9 +43,14 @@ export function App() {
   const [isSavedTemplatesOpen, setIsSavedTemplatesOpen] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
+  // Settings & History state
+  const [customRules, setCustomRules] = useState<CustomFileRule[]>(loadSavedRules);
+  const [preferences, setPreferences] = useState<AppPreferences>(loadPreferences);
+  const [historyList, setHistoryList] = useState<OrganizationResultSummary[]>(loadHistory);
+
   const stats = calculateFolderStats(rootFolder);
 
-  // Helper to count total available folders (including unselected)
+  // Helper to count total available folders
   const countAllNodes = (node: FolderNode): number => {
     let c = 1;
     if (node.children) {
@@ -44,6 +61,31 @@ export function App() {
     return c;
   };
   const totalAvailable = countAllNodes(rootFolder);
+
+  // Refresh history from storage
+  const handleRefreshHistory = () => {
+    setHistoryList(loadHistory());
+  };
+
+  // Save rules
+  const handleSaveRules = (rules: CustomFileRule[]) => {
+    setCustomRules(rules);
+    saveRules(rules);
+  };
+
+  // Save preferences
+  const handleSavePreferences = (prefs: AppPreferences) => {
+    setPreferences(prefs);
+    savePreferences(prefs);
+  };
+
+  // Reset all settings
+  const handleResetAllSettings = () => {
+    const defRules = resetRulesToDefault();
+    setCustomRules(defRules);
+    const defPrefs = resetPreferencesToDefault();
+    setPreferences(defPrefs);
+  };
 
   // Save current structure as user's custom default template
   const handleSaveCustomTemplate = () => {
@@ -150,9 +192,10 @@ export function App() {
       </div>
 
       {/* Main macOS Application Window */}
-      <div className="relative w-full max-w-5xl h-[88vh] min-h-[580px] max-h-[880px] bg-neutral-900/90 backdrop-blur-2xl rounded-2xl border border-white/15 shadow-2xl flex flex-col overflow-hidden ring-1 ring-black/50">
+      <div className="relative w-full max-w-6xl h-[90vh] min-h-[620px] max-h-[920px] bg-neutral-900/95 backdrop-blur-2xl rounded-2xl border border-white/15 shadow-2xl flex flex-col overflow-hidden ring-1 ring-black/50">
         {/* macOS Title Bar with Traffic Lights & Navigation */}
         <MacTitleBar
+          currentSection={currentSection}
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           rootFolderName={rootFolder.name}
@@ -162,51 +205,133 @@ export function App() {
           onOpenSavedTemplates={() => setIsSavedTemplatesOpen(true)}
         />
 
-        {/* Window Body: Sidebar + Main Content View */}
+        {/* Window Body: App Navigation Sidebar + Section View */}
         <div className="flex-1 flex overflow-hidden">
-          {/* macOS Finder Sidebar */}
-          <div className="hidden md:flex">
-            <MacSidebar
-              stats={stats}
-              totalAvailable={totalAvailable}
-              onSelectAll={handleSelectAll}
-              onDeselectAll={handleDeselectAll}
-              onNewRoot={handleNewRoot}
-              onAddSubfolderToRoot={handleAddSubfolderToRoot}
-              onResetToDefault={handleResetToDefault}
-              onSaveTemplate={handleSaveCustomTemplate}
-              onOpenSavedTemplates={() => setIsSavedTemplatesOpen(true)}
-              onExecuteMac={() => setIsActionModalOpen(true)}
-              rootFolder={rootFolder}
+          {/* Main App Navigation Sidebar (INÍCIO, ORGANIZAR, HISTÓRICO, CONFIGURAÇÕES) */}
+          <MacNavSidebar
+            currentSection={currentSection}
+            onSelectSection={setCurrentSection}
+            historyCount={historyList.length}
+          />
+
+          {/* Section 1: INÍCIO (The Streamlined Drag/Select -> Model -> Preview -> Execute -> Result flow) */}
+          {currentSection === 'inicio' && (
+            <OrganizeDashboard
+              customRules={customRules}
+              onNavigateToHistory={() => {
+                handleRefreshHistory();
+                setCurrentSection('historico');
+              }}
+              onNavigateToSettings={() => setCurrentSection('configuracoes')}
             />
-          </div>
+          )}
 
-          {/* Main View Area */}
-          <main className="flex-1 p-3 sm:p-4 bg-black/40 overflow-hidden flex flex-col">
-            {activeTab === 'tree' && (
-              <FinderTreeView
-                rootFolder={rootFolder}
-                onChange={setRootFolder}
-                selectedNodeId={selectedNodeId}
-                onSelectNode={(node) => setSelectedNodeId(node.id)}
-                onExecuteMac={() => setIsActionModalOpen(true)}
-              />
-            )}
+          {/* Section 2: ORGANIZAR (The Advanced macOS Folder Tree / Column / Terminal Editor) */}
+          {currentSection === 'organizar' && (
+            <div className="flex-1 flex overflow-hidden">
+              <div className="hidden lg:flex">
+                <MacSidebar
+                  stats={stats}
+                  totalAvailable={totalAvailable}
+                  onSelectAll={handleSelectAll}
+                  onDeselectAll={handleDeselectAll}
+                  onNewRoot={handleNewRoot}
+                  onAddSubfolderToRoot={handleAddSubfolderToRoot}
+                  onResetToDefault={handleResetToDefault}
+                  onSaveTemplate={handleSaveCustomTemplate}
+                  onOpenSavedTemplates={() => setIsSavedTemplatesOpen(true)}
+                  onExecuteMac={() => setIsActionModalOpen(true)}
+                  rootFolder={rootFolder}
+                />
+              </div>
 
-            {activeTab === 'columns' && (
-              <FinderColumnView
-                rootFolder={rootFolder}
-                onChange={setRootFolder}
-              />
-            )}
+              <main className="flex-1 p-3 sm:p-4 bg-black/40 overflow-hidden flex flex-col">
+                {activeTab === 'tree' && (
+                  <FinderTreeView
+                    rootFolder={rootFolder}
+                    onChange={setRootFolder}
+                    selectedNodeId={selectedNodeId}
+                    onSelectNode={(node) => setSelectedNodeId(node.id)}
+                    onExecuteMac={() => setIsActionModalOpen(true)}
+                  />
+                )}
 
-            {activeTab === 'terminal' && (
-              <MacTerminalView
-                rootFolder={rootFolder}
-                onOpenDirectModal={() => setIsActionModalOpen(true)}
-              />
-            )}
-          </main>
+                {activeTab === 'columns' && (
+                  <FinderColumnView
+                    rootFolder={rootFolder}
+                    onChange={setRootFolder}
+                  />
+                )}
+
+                {activeTab === 'terminal' && (
+                  <MacTerminalView
+                    rootFolder={rootFolder}
+                    onOpenDirectModal={() => setIsActionModalOpen(true)}
+                  />
+                )}
+              </main>
+            </div>
+          )}
+
+          {/* Section 3: HISTÓRICO */}
+          {currentSection === 'historico' && (
+            <HistoryView
+              history={historyList}
+              onRefreshHistory={handleRefreshHistory}
+              onNavigateToOrganize={() => setCurrentSection('inicio')}
+            />
+          )}
+
+          {/* Section 4: CONFIGURAÇÕES */}
+          {currentSection === 'configuracoes' && (
+            <SettingsView
+              customRules={customRules}
+              onSaveRules={handleSaveRules}
+              preferences={preferences}
+              onSavePreferences={handleSavePreferences}
+              onResetAllSettings={handleResetAllSettings}
+              onHistoryCleared={handleRefreshHistory}
+            />
+          )}
+        </div>
+
+        {/* Mobile / Small Screen Bottom Navigation Bar */}
+        <div className="md:hidden border-t border-white/10 bg-neutral-950/90 backdrop-blur-md px-3 py-2 flex items-center justify-around text-[10px] font-semibold">
+          <button
+            onClick={() => setCurrentSection('inicio')}
+            className={`flex flex-col items-center py-1 px-2 rounded-lg transition ${
+              currentSection === 'inicio' ? 'text-blue-400 font-bold' : 'text-neutral-400'
+            }`}
+          >
+            <span>INÍCIO</span>
+          </button>
+          <button
+            onClick={() => setCurrentSection('organizar')}
+            className={`flex flex-col items-center py-1 px-2 rounded-lg transition ${
+              currentSection === 'organizar' ? 'text-blue-400 font-bold' : 'text-neutral-400'
+            }`}
+          >
+            <span>ORGANIZAR</span>
+          </button>
+          <button
+            onClick={() => {
+              handleRefreshHistory();
+              setCurrentSection('historico');
+            }}
+            className={`flex flex-col items-center py-1 px-2 rounded-lg transition ${
+              currentSection === 'historico' ? 'text-blue-400 font-bold' : 'text-neutral-400'
+            }`}
+          >
+            <span>HISTÓRICO</span>
+          </button>
+          <button
+            onClick={() => setCurrentSection('configuracoes')}
+            className={`flex flex-col items-center py-1 px-2 rounded-lg transition ${
+              currentSection === 'configuracoes' ? 'text-blue-400 font-bold' : 'text-neutral-400'
+            }`}
+          >
+            <span>CONFIGURAÇÕES</span>
+          </button>
         </div>
       </div>
 
