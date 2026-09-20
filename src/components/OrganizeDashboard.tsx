@@ -28,6 +28,8 @@ import {
   isFileSystemAccessSupported,
   pickFolderHandle,
   scanFileList,
+  scanDroppedItems,
+  downloadMacOrganizeScript,
   executeOrganizationMoves,
   executeUndoMoves,
 } from '../services/fileSystem';
@@ -71,17 +73,20 @@ export function OrganizeDashboard({
   const [resultSummary, setResultSummary] = useState<OrganizationResultSummary | null>(null);
   const [isUndoing, setIsUndoing] = useState(false);
   const [undoMessage, setUndoMessage] = useState<string | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 1. Pick folder with File System Access API
   const handleSelectFolder = async () => {
     setScanError(null);
+    setIsScanning(true);
     try {
       if (isFileSystemAccessSupported()) {
         const result = await pickFolderHandle();
         if (result.files.length === 0) {
           setScanError(`A pasta "${result.folderName}" está vazia ou não contém arquivos soltos para organizar.`);
+          setIsScanning(false);
           return;
         }
         setDirHandle(result.dirHandle);
@@ -98,17 +103,26 @@ export function OrganizeDashboard({
       if (err?.name !== 'AbortError') {
         setScanError(err?.message || 'Não foi possível acessar a pasta selecionada.');
       }
+    } finally {
+      setIsScanning(false);
     }
   };
 
   // Drag & drop handlers
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
   };
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!isDragging) setIsDragging(true);
+  };
+
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
     setIsDragging(false);
   };
 
@@ -116,47 +130,41 @@ export function OrganizeDashboard({
     e.preventDefault();
     setIsDragging(false);
     setScanError(null);
+    setIsScanning(true);
 
-    // Check if DataTransferItem supports webkitGetAsEntry or files
-    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-      const files: File[] = [];
-      let detectedName = 'PASTA_ARRASTADA';
-
-      for (let i = 0; i < e.dataTransfer.items.length; i++) {
-        const item = e.dataTransfer.items[i];
-        if (item.kind === 'file') {
-          const entry = (item as any).webkitGetAsEntry?.();
-          if (entry && entry.isDirectory) {
-            detectedName = entry.name;
-          }
-          const file = item.getAsFile();
-          if (file) files.push(file);
-        }
-      }
-
-      if (files.length > 0) {
-        const result = await scanFileList(files);
-        setFolderName(detectedName || result.folderName);
-        setScannedFiles(result.files);
-        setStep('select_model');
+    try {
+      const result = await scanDroppedItems(e.dataTransfer);
+      if (result.files.length === 0) {
+        setScanError('Nenhum arquivo encontrado na pasta arrastada. Se preferir, clique em "SELECIONAR PASTA" para escolher diretamente.');
+        setIsScanning(false);
         return;
       }
-    }
 
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const result = await scanFileList(e.dataTransfer.files);
-      setFolderName(result.folderName);
+      setFolderName(result.folderName || 'PASTA_ARRASTADA');
       setScannedFiles(result.files);
+      setDirHandle(result.dirHandle);
       setStep('select_model');
+    } catch (err: any) {
+      console.error('Erro ao processar arrastar pasta:', err);
+      setScanError(err?.message || 'Erro ao ler a pasta arrastada.');
+    } finally {
+      setIsScanning(false);
     }
   };
 
   const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const result = await scanFileList(e.target.files);
-      setFolderName(result.folderName);
-      setScannedFiles(result.files);
-      setStep('select_model');
+      setIsScanning(true);
+      try {
+        const result = await scanFileList(e.target.files);
+        setFolderName(result.folderName);
+        setScannedFiles(result.files);
+        setStep('select_model');
+      } catch (err: any) {
+        setScanError('Erro ao carregar arquivos da pasta selecionada.');
+      } finally {
+        setIsScanning(false);
+      }
     }
   };
 
@@ -178,6 +186,13 @@ export function OrganizeDashboard({
   // 3. Execute Organization
   const handleStartOrganization = async () => {
     if (!previewData) return;
+
+    if (!dirHandle && isFileSystemAccessSupported()) {
+      // If handle is missing, guide the user to select the folder in Finder to move directly
+      await handleSelectFolderAndExecute();
+      return;
+    }
+
     setStep('executing');
     setProgressCount(0);
 
@@ -202,8 +217,55 @@ export function OrganizeDashboard({
       setStep('result');
     } catch (err: any) {
       console.error(err);
-      setScanError('Ocorreu um erro durante a organização dos arquivos.');
+      setScanError(err?.message || 'Ocorreu um erro durante a organização dos arquivos.');
       setStep('select_model');
+    }
+  };
+
+  const handleSelectFolderAndExecute = async () => {
+    if (!previewData) return;
+    try {
+      const picked = await pickFolderHandle();
+      setDirHandle(picked.dirHandle);
+      setFolderName(picked.folderName);
+
+      setStep('executing');
+      setProgressCount(0);
+
+      const modelObj = ORGANIZATION_MODELS.find((m) => m.id === selectedModel);
+      const modelTitle = modelObj ? modelObj.title : 'Personalizado';
+
+      // Match files with native handle
+      const movesWithHandles = previewData.plannedMoves.map((m) => {
+        const matching = picked.files.find((pf) => pf.name === m.file.name);
+        return {
+          ...m,
+          file: {
+            ...m.file,
+            handle: matching?.handle || m.file.handle,
+          },
+        };
+      });
+
+      const result = await executeOrganizationMoves(
+        picked.dirHandle,
+        movesWithHandles,
+        selectedModel,
+        modelTitle,
+        (current, _total, fileName, targetFolder) => {
+          setProgressCount(current);
+          setCurrentFileProcessing(fileName);
+          setCurrentTargetProcessing(targetFolder);
+        }
+      );
+
+      setResultSummary(result);
+      addHistoryEntry(result);
+      setStep('result');
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        alert(err?.message || 'Não foi possível conceder permissão à pasta.');
+      }
     }
   };
 
@@ -280,40 +342,69 @@ export function OrganizeDashboard({
 
           {/* Large Drop Zone */}
           <div
+            onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             onClick={handleSelectFolder}
             className={`w-full max-w-lg p-10 sm:p-14 rounded-2xl border-2 border-dashed transition duration-200 cursor-pointer flex flex-col items-center justify-center space-y-4 ${
-              isDragging
-                ? 'border-blue-500 bg-blue-500/10 scale-[1.01]'
+              isScanning
+                ? 'border-blue-500 bg-blue-500/10'
+                : isDragging
+                ? 'border-blue-400 bg-blue-500/20 scale-[1.02] shadow-2xl shadow-blue-500/20 ring-4 ring-blue-500/20'
                 : 'border-white/15 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/25'
             }`}
           >
-            <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/25 flex items-center justify-center text-blue-400 text-2xl shadow-inner">
-              <Plus className="w-7 h-7 stroke-[2.5]" />
-            </div>
-
-            <div className="space-y-1">
-              <div className="text-sm sm:text-base font-semibold tracking-wider text-white uppercase">
-                ARRASTE UMA PASTA AQUI
+            {isScanning ? (
+              <div className="flex flex-col items-center space-y-3 py-2">
+                <div className="w-12 h-12 border-3 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                <div className="text-sm font-bold text-white tracking-wide">
+                  LENDO ARQUIVOS DA PASTA...
+                </div>
+                <div className="text-xs text-neutral-400 max-w-xs">
+                  Aguarde um instante enquanto mapeamos todos os arquivos.
+                </div>
               </div>
-              <div className="text-xs text-neutral-400">
-                ou clique para selecionar do seu Mac
+            ) : isDragging ? (
+              <div className="flex flex-col items-center space-y-3 py-2 pointer-events-none">
+                <div className="w-14 h-14 rounded-2xl bg-blue-500/30 border border-blue-400 flex items-center justify-center text-blue-300 shadow-lg">
+                  <Upload className="w-7 h-7 animate-bounce" />
+                </div>
+                <div className="text-base font-bold text-white tracking-wide">
+                  SOLTE A PASTA AQUI
+                </div>
+                <div className="text-xs text-blue-300">
+                  Os arquivos serão lidos e organizados automaticamente
+                </div>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/25 flex items-center justify-center text-blue-400 text-2xl shadow-inner">
+                  <Plus className="w-7 h-7 stroke-[2.5]" />
+                </div>
 
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleSelectFolder();
-              }}
-              className="mt-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs sm:text-sm shadow-lg shadow-blue-500/25 transition active:scale-95 flex items-center space-x-2"
-            >
-              <FolderOpen className="w-4 h-4" />
-              <span>SELECIONAR PASTA</span>
-            </button>
+                <div className="space-y-1">
+                  <div className="text-sm sm:text-base font-semibold tracking-wider text-white uppercase">
+                    ARRASTE UMA PASTA AQUI
+                  </div>
+                  <div className="text-xs text-neutral-400">
+                    ou clique no botão abaixo para escolher do seu Mac
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSelectFolder();
+                  }}
+                  className="mt-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs sm:text-sm shadow-lg shadow-blue-500/25 transition active:scale-95 flex items-center space-x-2"
+                >
+                  <FolderOpen className="w-4 h-4" />
+                  <span>SELECIONAR PASTA</span>
+                </button>
+              </>
+            )}
           </div>
 
           {scanError && (
@@ -539,7 +630,7 @@ export function OrganizeDashboard({
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
             <button
               onClick={() => setStep('select_model')}
               className="px-5 py-2.5 rounded-xl border border-white/15 hover:bg-white/10 text-neutral-300 text-xs sm:text-sm font-medium transition"
@@ -547,13 +638,24 @@ export function OrganizeDashboard({
               CANCELAR
             </button>
 
-            <button
-              onClick={handleStartOrganization}
-              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-blue-500/25 transition active:scale-95 flex items-center space-x-2"
-            >
-              <span>ORGANIZAR AGORA</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => downloadMacOrganizeScript(folderName, previewData.plannedMoves)}
+                className="px-4 py-2.5 rounded-xl border border-white/15 hover:bg-white/10 text-neutral-200 text-xs sm:text-sm font-medium transition flex items-center space-x-1.5"
+                title="Baixar script executável para Mac Terminal (.command)"
+              >
+                <span>⚡ Script Mac (.command)</span>
+              </button>
+
+              <button
+                onClick={handleStartOrganization}
+                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-blue-500/25 transition active:scale-95 flex items-center justify-center space-x-2"
+              >
+                <span>{dirHandle ? 'ORGANIZAR NO MAC AGORA' : 'SELECIONAR PASTA NO MAC E MOVER'}</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -99,6 +99,195 @@ export async function scanFileList(fileList: FileList | File[]): Promise<{
 }
 
 /**
+ * Recursively scans dropped items from a DragEvent.
+ * Fully supports:
+ * 1. FileSystemDirectoryHandle via item.getAsFileSystemHandle() (Mac Chrome / Chromium)
+ * 2. FileSystemDirectoryEntry via item.webkitGetAsEntry() (Safari, Firefox, Chrome fallback)
+ * 3. Regular dropped FileList
+ */
+export async function scanDroppedItems(dataTransfer: DataTransfer): Promise<{
+  folderName: string;
+  files: FileItemInfo[];
+  dirHandle: any | null;
+}> {
+  // 1. Try getAsFileSystemHandle (modern Mac Chrome / Chromium)
+  if (dataTransfer.items && dataTransfer.items.length > 0) {
+    for (let i = 0; i < dataTransfer.items.length; i++) {
+      const item = dataTransfer.items[i];
+      if (item.kind !== 'file') continue;
+
+      if (typeof (item as any).getAsFileSystemHandle === 'function') {
+        try {
+          const handle = await (item as any).getAsFileSystemHandle();
+          if (handle && handle.kind === 'directory') {
+            const files: FileItemInfo[] = [];
+            for await (const [name, child] of (handle as any).entries()) {
+              if (child.kind === 'file') {
+                if (name.startsWith('.') || name === 'Thumbs.db') continue;
+                try {
+                  const fileObj = await child.getFile();
+                  files.push({
+                    id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                    name,
+                    size: fileObj.size,
+                    lastModified: fileObj.lastModified,
+                    type: fileObj.type,
+                    handle: child,
+                    fileObject: fileObj,
+                    relativePath: name,
+                  });
+                } catch (e) {
+                  console.warn('Erro ao ler arquivo do handle:', name, e);
+                }
+              }
+            }
+
+            if (files.length > 0) {
+              return {
+                folderName: handle.name,
+                files,
+                dirHandle: handle,
+              };
+            }
+          }
+        } catch (err) {
+          console.warn('getAsFileSystemHandle falhou, tentando fallback por entry:', err);
+        }
+      }
+    }
+  }
+
+  // 2. Fallback: webkitGetAsEntry (universal directory reader across browsers)
+  if (dataTransfer.items && dataTransfer.items.length > 0) {
+    const rawFiles: File[] = [];
+    let detectedFolderName = '';
+
+    for (let i = 0; i < dataTransfer.items.length; i++) {
+      const item = dataTransfer.items[i];
+      if (item.kind !== 'file') continue;
+
+      const entry = (item as any).webkitGetAsEntry ? (item as any).webkitGetAsEntry() : null;
+      if (entry) {
+        if (entry.isDirectory) {
+          if (!detectedFolderName) detectedFolderName = entry.name;
+          const dirFiles = await readAllFilesFromEntry(entry);
+          rawFiles.push(...dirFiles);
+        } else if (entry.isFile) {
+          const file = await getFileFromEntry(entry);
+          if (file) rawFiles.push(file);
+        }
+      } else {
+        const file = item.getAsFile();
+        if (file) rawFiles.push(file);
+      }
+    }
+
+    if (rawFiles.length > 0) {
+      const files: FileItemInfo[] = [];
+      for (const f of rawFiles) {
+        if (f.name.startsWith('.') || f.name === 'Thumbs.db') continue;
+        files.push({
+          id: `file-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          name: f.name,
+          size: f.size,
+          lastModified: f.lastModified,
+          type: f.type,
+          fileObject: f,
+          relativePath: (f as any).webkitRelativePath || f.name,
+        });
+      }
+
+      return {
+        folderName: detectedFolderName || 'PASTA_ARRASTADA',
+        files,
+        dirHandle: null,
+      };
+    }
+  }
+
+  // 3. Fallback: dataTransfer.files
+  if (dataTransfer.files && dataTransfer.files.length > 0) {
+    const res = await scanFileList(dataTransfer.files);
+    return {
+      folderName: res.folderName,
+      files: res.files,
+      dirHandle: null,
+    };
+  }
+
+  return {
+    folderName: '',
+    files: [],
+    dirHandle: null,
+  };
+}
+
+async function readAllFilesFromEntry(entry: any, basePath = ''): Promise<File[]> {
+  if (!entry) return [];
+  if (entry.isFile) {
+    return new Promise((resolve) => {
+      entry.file(
+        (f: File) => {
+          const relPath = basePath ? `${basePath}/${f.name}` : f.name;
+          try {
+            Object.defineProperty(f, 'webkitRelativePath', {
+              value: relPath,
+              configurable: true,
+            });
+          } catch (e) {
+            // ignore
+          }
+          resolve([f]);
+        },
+        () => resolve([])
+      );
+    });
+  }
+
+  if (entry.isDirectory) {
+    const dirReader = entry.createReader();
+    const childEntries: any[] = [];
+
+    await new Promise<void>((resolve) => {
+      function readBatch() {
+        dirReader.readEntries(
+          (batch: any[]) => {
+            if (!batch || batch.length === 0) {
+              resolve();
+            } else {
+              childEntries.push(...batch);
+              readBatch();
+            }
+          },
+          () => resolve()
+        );
+      }
+      readBatch();
+    });
+
+    const results: File[] = [];
+    const currentPath = basePath ? `${basePath}/${entry.name}` : entry.name;
+    for (const child of childEntries) {
+      if (child.name.startsWith('.') || child.name === 'Thumbs.db') continue;
+      const childFiles = await readAllFilesFromEntry(child, currentPath);
+      results.push(...childFiles);
+    }
+    return results;
+  }
+
+  return [];
+}
+
+async function getFileFromEntry(entry: any): Promise<File | null> {
+  return new Promise((resolve) => {
+    entry.file(
+      (f: File) => resolve(f),
+      () => resolve(null)
+    );
+  });
+}
+
+/**
  * Helper to find safe, non-colliding file name:
  * video.mp4 -> video (1).mp4 -> video (2).mp4
  */
@@ -149,6 +338,21 @@ export async function executeOrganizationMoves(
     fileHandle?: any;
     targetDirHandle?: any;
   }> = [];
+
+  // If rootHandle is provided, verify/request readwrite permission
+  if (rootHandle && typeof rootHandle.queryPermission === 'function') {
+    try {
+      const q = await rootHandle.queryPermission({ mode: 'readwrite' });
+      if (q !== 'granted') {
+        const r = await rootHandle.requestPermission({ mode: 'readwrite' });
+        if (r !== 'granted') {
+          throw new Error('Permissão de gravação na pasta necessária para mover arquivos no Mac.');
+        }
+      }
+    } catch (permErr: any) {
+      console.warn('Verificação de permissão:', permErr);
+    }
+  }
 
   for (let i = 0; i < total; i++) {
     const move = plannedMoves[i];
@@ -270,4 +474,62 @@ export async function executeUndoMoves(
     revertedCount,
     errors,
   };
+}
+
+/**
+ * Generates and triggers download of a macOS .command Terminal script
+ * which moves all files into their respective subfolders in 1 click
+ */
+export function downloadMacOrganizeScript(folderName: string, plannedMoves: PlannedFileMove[]) {
+  const safeFolderName = folderName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'pasta';
+  const lines = [
+    '#!/bin/bash',
+    '# =========================================================',
+    '# Script de Organização Automática para macOS',
+    `# Pasta Alvo: ${folderName}`,
+    '# =========================================================',
+    'cd "$(dirname "$0")" || exit 1',
+    '',
+    'echo ""',
+    'echo "🍎 Organizando seus arquivos no Mac..."',
+    'echo ""',
+    '',
+  ];
+
+  // Create unique subfolders
+  const uniqueFolders = Array.from(
+    new Set(plannedMoves.map((m) => m.targetFolder).filter(Boolean))
+  );
+
+  for (const f of uniqueFolders) {
+    lines.push(`mkdir -p "${f}"`);
+  }
+  lines.push('');
+
+  // Move files
+  for (const move of plannedMoves) {
+    if (move.targetFolder) {
+      lines.push(`if [ -f "${move.file.name}" ]; then`);
+      lines.push(`  mv -n "${move.file.name}" "${move.targetFolder}/"`);
+      lines.push('fi');
+    }
+  }
+
+  lines.push('');
+  lines.push('echo ""');
+  lines.push('echo "✅ Todos os arquivos foram organizados com sucesso!"');
+  lines.push('echo "Pressione Enter para encerrar..."');
+  lines.push('read -r');
+  lines.push('exit 0');
+
+  const content = lines.join('\n');
+  const blob = new Blob([content], { type: 'application/x-sh' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `organizar_${safeFolderName}.command`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
