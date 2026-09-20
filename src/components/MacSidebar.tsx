@@ -4,6 +4,7 @@ import {
   RotateCcw,
   Plus,
   BookmarkCheck,
+  Bookmark,
 } from 'lucide-react';
 import { FolderStats, FolderNode } from '../types';
 
@@ -16,6 +17,7 @@ interface MacSidebarProps {
   onAddSubfolderToRoot: () => void;
   onResetToDefault: () => void;
   onSaveTemplate: () => void;
+  onOpenSavedTemplates: () => void;
   onExecuteMac: () => void;
   rootFolder: FolderNode;
 }
@@ -29,6 +31,7 @@ export function MacSidebar({
   onAddSubfolderToRoot,
   onResetToDefault,
   onSaveTemplate,
+  onOpenSavedTemplates,
   onExecuteMac,
   rootFolder,
 }: MacSidebarProps) {
@@ -47,22 +50,31 @@ export function MacSidebar({
           </button>
         </div>
 
-        {/* Section: Salvar Modelo Personalizado */}
-        <div className="bg-emerald-950/30 p-3 rounded-xl border border-emerald-500/20 space-y-2">
+        {/* Section: Gerenciador de Vários Modelos Salvos */}
+        <div className="bg-emerald-950/30 p-3 rounded-xl border border-emerald-500/25 space-y-2">
           <div className="text-[11px] font-semibold text-emerald-300 uppercase tracking-wider flex items-center space-x-1.5">
-            <BookmarkCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Modelo Personalizado</span>
+            <Bookmark className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Modelos Salvos</span>
           </div>
           <p className="text-[11px] text-neutral-400 leading-relaxed">
-            Salve suas pastas e nomes atuais para abri-los sempre que retornar.
+            Salve vários modelos diferentes, carregue ou exporte em JSON.
           </p>
-          <button
-            onClick={onSaveTemplate}
-            className="w-full py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition shadow-sm flex items-center justify-center space-x-1.5"
-          >
-            <BookmarkCheck className="w-3.5 h-3.5" />
-            <span>Salvar Meu Modelo</span>
-          </button>
+          <div className="grid grid-cols-1 gap-1.5">
+            <button
+              onClick={onOpenSavedTemplates}
+              className="w-full py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition shadow-sm flex items-center justify-center space-x-1.5"
+            >
+              <Bookmark className="w-3.5 h-3.5" />
+              <span>Gerenciar Meus Modelos</span>
+            </button>
+            <button
+              onClick={onSaveTemplate}
+              className="w-full py-1.5 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-300 text-xs font-medium transition border border-white/10 flex items-center justify-center space-x-1.5"
+            >
+              <BookmarkCheck className="w-3.5 h-3.5 text-blue-400" />
+              <span>Salvar como Padrão</span>
+            </button>
+          </div>
         </div>
 
         {/* Section: Escolha de Pastas */}

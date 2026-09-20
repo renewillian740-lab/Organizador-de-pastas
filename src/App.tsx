@@ -8,6 +8,7 @@ import { FinderTreeView } from './components/FinderTreeView';
 import { FinderColumnView } from './components/FinderColumnView';
 import { MacTerminalView } from './components/MacTerminalView';
 import { MacActionModal } from './components/MacActionModal';
+import { SavedTemplatesModal } from './components/SavedTemplatesModal';
 
 const STORAGE_KEY = 'mac_folder_custom_template_v1';
 
@@ -27,6 +28,7 @@ export function App() {
   const [activeTab, setActiveTab] = useState<'tree' | 'columns' | 'terminal'>('tree');
   const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>();
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
+  const [isSavedTemplatesOpen, setIsSavedTemplatesOpen] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
   const stats = calculateFolderStats(rootFolder);
@@ -47,7 +49,7 @@ export function App() {
   const handleSaveCustomTemplate = () => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(rootFolder));
-      setSaveSuccessMsg('Modelo personalizado salvo com sucesso!');
+      setSaveSuccessMsg('Modelo padrão salvo com sucesso!');
       setTimeout(() => setSaveSuccessMsg(null), 3000);
     } catch (e) {
       console.error(e);
@@ -157,6 +159,7 @@ export function App() {
           selectedFoldersCount={stats.totalFolders}
           onExecuteMac={() => setIsActionModalOpen(true)}
           onSaveTemplate={handleSaveCustomTemplate}
+          onOpenSavedTemplates={() => setIsSavedTemplatesOpen(true)}
         />
 
         {/* Window Body: Sidebar + Main Content View */}
@@ -172,6 +175,7 @@ export function App() {
               onAddSubfolderToRoot={handleAddSubfolderToRoot}
               onResetToDefault={handleResetToDefault}
               onSaveTemplate={handleSaveCustomTemplate}
+              onOpenSavedTemplates={() => setIsSavedTemplatesOpen(true)}
               onExecuteMac={() => setIsActionModalOpen(true)}
               rootFolder={rootFolder}
             />
@@ -211,6 +215,14 @@ export function App() {
         isOpen={isActionModalOpen}
         onClose={() => setIsActionModalOpen(false)}
         rootFolder={rootFolder}
+      />
+
+      {/* Saved Multi-Templates Manager Modal */}
+      <SavedTemplatesModal
+        isOpen={isSavedTemplatesOpen}
+        onClose={() => setIsSavedTemplatesOpen(false)}
+        currentRootFolder={rootFolder}
+        onLoadTemplate={(folder) => setRootFolder(folder)}
       />
     </div>
   );

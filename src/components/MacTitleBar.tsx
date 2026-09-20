@@ -1,4 +1,4 @@
-import { FolderTree, Columns, Terminal, CheckSquare, BookmarkCheck } from 'lucide-react';
+import { FolderTree, Columns, Terminal, CheckSquare, Bookmark, BookmarkCheck } from 'lucide-react';
 
 interface MacTitleBarProps {
   activeTab: 'tree' | 'columns' | 'terminal';
@@ -7,6 +7,7 @@ interface MacTitleBarProps {
   selectedFoldersCount: number;
   onExecuteMac: () => void;
   onSaveTemplate: () => void;
+  onOpenSavedTemplates: () => void;
 }
 
 export function MacTitleBar({
@@ -16,6 +17,7 @@ export function MacTitleBar({
   selectedFoldersCount,
   onExecuteMac,
   onSaveTemplate,
+  onOpenSavedTemplates,
 }: MacTitleBarProps) {
   return (
     <header className="bg-neutral-900/95 backdrop-blur-md border-b border-white/10 px-4 py-3 select-none flex flex-wrap items-center justify-between gap-3 text-sm">
@@ -31,7 +33,7 @@ export function MacTitleBar({
         {/* Current Root Folder pill */}
         <div className="flex items-center space-x-2 bg-white/5 border border-white/10 px-3 py-1 rounded-md text-neutral-200">
           <span className="text-blue-400">📁</span>
-          <span className="font-medium text-xs md:text-sm truncate max-w-[160px] md:max-w-[220px]" title={rootFolderName}>
+          <span className="font-medium text-xs md:text-sm truncate max-w-[140px] md:max-w-[200px]" title={rootFolderName}>
             {rootFolderName}
           </span>
           <span className="text-[11px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-mono flex items-center space-x-1">
@@ -86,13 +88,22 @@ export function MacTitleBar({
       {/* Right: Save Template & Execute Action Buttons */}
       <div className="flex items-center space-x-2">
         <button
+          onClick={onOpenSavedTemplates}
+          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-medium text-xs border border-emerald-500/30 transition active:scale-95"
+          title="Ver e gerenciar todos os seus modelos salvos"
+        >
+          <Bookmark className="w-3.5 h-3.5 text-emerald-400" />
+          <span className="hidden md:inline">Meus Modelos</span>
+        </button>
+
+        <button
           id="btn-save-template"
           onClick={onSaveTemplate}
           className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 text-neutral-200 font-medium text-xs border border-white/15 transition active:scale-95"
-          title="Salvar esta estrutura atual como meu modelo personalizado padrão"
+          title="Salvar esta estrutura atual como meu modelo padrão"
         >
-          <BookmarkCheck className="w-3.5 h-3.5 text-emerald-400" />
-          <span className="hidden sm:inline">Salvar Modelo</span>
+          <BookmarkCheck className="w-3.5 h-3.5 text-blue-400" />
+          <span className="hidden sm:inline">Salvar Padrão</span>
         </button>
 
         <button
