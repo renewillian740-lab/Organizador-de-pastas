@@ -32,7 +32,7 @@ export function MacActionModal({ isOpen, onClose, rootFolder }: MacActionModalPr
   const isInsideIframe = typeof window !== 'undefined' && window.self !== window.top;
 
   // ALL HOOKS MUST BE CALLED AT THE TOP LEVEL BEFORE ANY EARLY RETURN (Rules of Hooks)
-  const [activeAction, setActiveAction] = useState<'script' | 'terminal' | 'zip' | 'direct'>('script');
+  const [activeAction, setActiveAction] = useState<'script' | 'terminal' | 'zip' | 'direct'>('direct');
   const [copiedTerminal, setCopiedTerminal] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
   const [downloadedScript, setDownloadedScript] = useState(false);
@@ -148,42 +148,6 @@ export function MacActionModal({ isOpen, onClose, rootFolder }: MacActionModalPr
         {/* Tab Selection */}
         <div className="flex border-b border-white/10 bg-black/40 px-4 sm:px-6 pt-2 gap-1.5 overflow-x-auto text-xs">
           <button
-            onClick={() => setActiveAction('script')}
-            className={`pb-2.5 px-3 font-medium flex items-center space-x-2 border-b-2 transition whitespace-nowrap ${
-              activeAction === 'script'
-                ? 'border-blue-500 text-blue-400 font-semibold'
-                : 'border-transparent text-neutral-400 hover:text-white'
-            }`}
-          >
-            <FileCode className="w-4 h-4" />
-            <span>Arquivo Mac (.command) ⭐</span>
-          </button>
-
-          <button
-            onClick={() => setActiveAction('terminal')}
-            className={`pb-2.5 px-3 font-medium flex items-center space-x-2 border-b-2 transition whitespace-nowrap ${
-              activeAction === 'terminal'
-                ? 'border-blue-500 text-blue-400 font-semibold'
-                : 'border-transparent text-neutral-400 hover:text-white'
-            }`}
-          >
-            <Terminal className="w-4 h-4" />
-            <span>Terminal Mac (1-Clique)</span>
-          </button>
-
-          <button
-            onClick={() => setActiveAction('zip')}
-            className={`pb-2.5 px-3 font-medium flex items-center space-x-2 border-b-2 transition whitespace-nowrap ${
-              activeAction === 'zip'
-                ? 'border-blue-500 text-blue-400 font-semibold'
-                : 'border-transparent text-neutral-400 hover:text-white'
-            }`}
-          >
-            <Archive className="w-4 h-4" />
-            <span>Baixar .ZIP</span>
-          </button>
-
-          <button
             onClick={() => setActiveAction('direct')}
             className={`pb-2.5 px-3 font-medium flex items-center space-x-2 border-b-2 transition whitespace-nowrap ${
               activeAction === 'direct'
@@ -192,7 +156,19 @@ export function MacActionModal({ isOpen, onClose, rootFolder }: MacActionModalPr
             }`}
           >
             <FolderSync className="w-4 h-4" />
-            <span>Criador Direto</span>
+            <span>Criador Direto no Mac ⭐</span>
+          </button>
+
+          <button
+            onClick={() => setActiveAction('script')}
+            className={`pb-2.5 px-3 font-medium flex items-center space-x-2 border-b-2 transition whitespace-nowrap ${
+              activeAction === 'script'
+                ? 'border-blue-500 text-blue-400 font-semibold'
+                : 'border-transparent text-neutral-400 hover:text-white'
+            }`}
+          >
+            <FileCode className="w-4 h-4" />
+            <span>Arquivo Mac (.command)</span>
           </button>
         </div>
 
