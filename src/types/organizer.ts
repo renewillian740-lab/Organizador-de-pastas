@@ -17,6 +17,7 @@ export interface FileItemInfo {
   relativePath?: string;
   parentDirHandle?: any; // Handle of the subfolder where file currently resides
   isNestedInSubfolder?: boolean; // True if file was discovered inside an existing subfolder
+  isProjectInternal?: boolean; // True if file belongs to a Premiere/AfterEffects internal project bundle
 }
 
 export interface PlannedFileMove {
@@ -33,6 +34,8 @@ export interface OrganizationPreviewData {
   filesWithoutRule: number;
   plannedMoves: PlannedFileMove[];
   treeStructure: Record<string, string[]>; // folderPath -> list of file names
+  hasPremiereProjects?: boolean;
+  premiereFilesCount?: number;
 }
 
 export interface OrganizationProgressState {

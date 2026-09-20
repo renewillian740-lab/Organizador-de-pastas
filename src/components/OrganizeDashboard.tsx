@@ -581,6 +581,19 @@ export function OrganizeDashboard({
             </div>
           </div>
 
+          {/* Informative alert when Premiere projects or auto-saves are detected */}
+          {previewData.hasPremiereProjects && (
+            <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl px-4 py-3 flex items-start space-x-3 text-xs">
+              <span className="text-base leading-none">🎬</span>
+              <div className="flex-1 text-neutral-300">
+                <span className="font-semibold text-purple-300">Projeto do Premiere / After Effects Preservado:</span>
+                <p className="text-neutral-400 text-[11px] mt-0.5 leading-relaxed">
+                  Detectamos <strong className="text-white">{previewData.premiereFilesCount}</strong> arquivo(s) vinculados ao projeto do Premiere (Auto-Saves, Video/Audio Previews e Caches). Eles foram mantidos intactos dentro de <span className="font-mono text-purple-300">01_PROJETOS</span> e não serão espalhados em pastas de footage ou áudio.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Tree preview of planned folder structure */}
           <div className="bg-black/40 border border-white/10 rounded-2xl p-4 sm:p-5 flex flex-col space-y-3 max-h-[380px] overflow-hidden">
             <div className="text-xs font-semibold text-neutral-400 uppercase tracking-wider flex items-center justify-between">

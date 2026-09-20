@@ -113,30 +113,36 @@ function sanitizeFolderName(name: string): string {
 }
 
 /**
+ * Detects whether a path or file extension is internal to Adobe Premiere Pro or After Effects
+ */
+export function isAdobeInternalPath(pathStr: string, ext: string): boolean {
+  const lower = pathStr.toLowerCase().replace(/\\/g, '/');
+  const hasAdobeFolder = /(adobe premiere pro|adobe after effects|auto-save|video previews|audio previews|media cache|peak files)/i.test(lower);
+  const isAdobeInternalExt = /\.(pek|cfa|prv|prfpset|ims|mcdb)$/i.test(ext);
+  return hasAdobeFolder || isAdobeInternalExt;
+}
+
+export interface PremiereBundleInfo {
+  isPremiere: boolean;
+  projectDirName: string | null;
+  internalSubPath: string | null;
+}
+
+/**
  * Categorizes a file into the user's project structure
  * (e.g. 01_PROJETOS, 02_FOOTAGE, 03_ASSETS, 04_EXPORT, etc.)
  */
 function categorizeIntoProjectStructure(
-  fileName: string,
+  file: FileItemInfo,
   ext: string,
   rootFolder: FolderNode,
-  ruleMap: Map<string, string>
+  ruleMap: Map<string, string>,
+  premiereInfo: PremiereBundleInfo
 ): { targetFolder: string; targetSubfolders: string[] } {
-  // Check explicit rule map first
-  if (ruleMap.has(ext)) {
-    const customTarget = ruleMap.get(ext)!;
-    return {
-      targetFolder: customTarget,
-      targetSubfolders: customTarget.split('/').filter(Boolean),
-    };
-  }
-
   const activeMainFolders = (rootFolder.children || []).filter((c) => c.enabled !== false);
   if (activeMainFolders.length === 0) {
     return { targetFolder: '01_GERAL', targetSubfolders: ['01_GERAL'] };
   }
-
-  const lowerName = fileName.toLowerCase();
 
   // Helper to find folder by regex
   const findFolderByRegex = (regex: RegExp): FolderNode | undefined => {
@@ -147,6 +153,51 @@ function categorizeIntoProjectStructure(
   const footageFolder = findFolderByRegex(/footage|bruto|raw|grav|cam|film|video/i) || activeMainFolders[1] || activeMainFolders[0];
   const assetsFolder = findFolderByRegex(/asset|som|audio|trilha|sfx|img|foto|design|fonte|recurso/i) || activeMainFolders[2] || activeMainFolders[0];
   const exportFolder = findFolderByRegex(/export|entrega|final|render|saida|aprov/i) || activeMainFolders[3] || activeMainFolders[activeMainFolders.length - 1];
+
+  // =========================================================================
+  // 🎬 CRITICAL USER RULE: PREMIERE / VIDEO PROJECT BUNDLES & CACHES
+  // Premiere projects contain internal auto-saves, video previews, peak audio
+  // files, and caches that MUST NOT be scattered into FOOTAGE, ASSETS or EXPORT.
+  // They must remain grouped inside 01_PROJETOS (under Premiere_AfterEffects).
+  // =========================================================================
+  if (premiereInfo.isPremiere) {
+    const activeSub = (projectFolder.children || []).filter((c) => c.enabled !== false);
+    const premiereSub = activeSub.find((s) => /premiere|after|video/i.test(s.name));
+    const baseProjectDir = premiereSub
+      ? `${projectFolder.name}/${premiereSub.name}`
+      : projectFolder.name;
+
+    const pathSegments: string[] = baseProjectDir.split('/').filter(Boolean);
+
+    // If file belongs to a specific project folder (e.g. "Projeto_Comercial")
+    if (premiereInfo.projectDirName) {
+      pathSegments.push(premiereInfo.projectDirName);
+    }
+
+    // If it has internal subfolder structure (e.g. "Adobe Premiere Pro Video Previews")
+    if (premiereInfo.internalSubPath) {
+      for (const segment of premiereInfo.internalSubPath.split('/').filter(Boolean)) {
+        pathSegments.push(segment);
+      }
+    }
+
+    const fullTarget = pathSegments.join('/');
+    return {
+      targetFolder: fullTarget,
+      targetSubfolders: pathSegments,
+    };
+  }
+
+  // Check explicit rule map first for regular files
+  if (ruleMap.has(ext)) {
+    const customTarget = ruleMap.get(ext)!;
+    return {
+      targetFolder: customTarget,
+      targetSubfolders: customTarget.split('/').filter(Boolean),
+    };
+  }
+
+  const lowerName = file.name.toLowerCase();
 
   // 1. Check if it's an export / rendered deliverable (has export/final/v1/v2/preview keywords)
   const isExportKeyword = /(export|final|render|master|prev|previa|aprovad|_v\d|v\d\b)/i.test(lowerName);
@@ -330,6 +381,7 @@ export function planOrganization(
   const foldersSet = new Set<string>();
   const treeStructure: Record<string, string[]> = {};
   let filesWithoutRule = 0;
+  let premiereFilesCount = 0;
 
   // Resolve project template root
   let activeRoot = projectRootFolder;
@@ -352,20 +404,95 @@ export function planOrganization(
     ruleMap.set(ext, sanitizeFolderName(rule.targetFolder));
   }
 
+  // 1. Identify all folders containing Premiere / After Effects projects or internal caches
+  const premiereProjectDirs = new Set<string>();
+
+  for (const f of files) {
+    const rel = (f.relativePath || f.name).replace(/\\/g, '/');
+    const parts = rel.split('/');
+    const ext = getFileExtension(f.name);
+
+    if (['.prproj', '.aep', '.aepx'].includes(ext)) {
+      if (parts.length > 1) {
+        // e.g. "Projeto_Comercial/Edicao.prproj" -> "Projeto_Comercial"
+        const dir = parts.slice(0, -1).join('/');
+        premiereProjectDirs.add(dir);
+      }
+    }
+
+    // Also check if relative path contains known Adobe internal folders
+    const adobeFolderMatch = rel.match(/(.*?)\b(Adobe Premiere Pro [^/]+|Adobe After Effects [^/]+|Media Cache Files|Peak Files)\b/i);
+    if (adobeFolderMatch) {
+      const parentDir = adobeFolderMatch[1].replace(/\/$/, '');
+      if (parentDir) {
+        premiereProjectDirs.add(parentDir);
+      }
+    }
+  }
+
+  const getPremiereInfo = (f: FileItemInfo, ext: string): PremiereBundleInfo => {
+    const rel = (f.relativePath || f.name).replace(/\\/g, '/');
+    const lower = rel.toLowerCase();
+    const isAdobeExt = ['.prproj', '.aep', '.aepx', '.pek', '.cfa', '.prv', '.prfpset', '.ims', '.mcdb'].includes(ext);
+    const isInternalFolder = /(adobe premiere pro|adobe after effects|auto-save|video previews|audio previews|media cache|peak files)/i.test(lower);
+
+    // Check if file is inside a detected Premiere project directory
+    for (const pDir of premiereProjectDirs) {
+      if (rel === pDir || rel.startsWith(`${pDir}/`)) {
+        const relInside = rel.slice(pDir.length).replace(/^\//, '');
+        const parts = relInside.split('/').filter(Boolean);
+        const internalSub = parts.length > 1 ? parts.slice(0, -1).join('/') : null;
+        return {
+          isPremiere: true,
+          projectDirName: pDir.split('/').pop() || pDir,
+          internalSubPath: internalSub,
+        };
+      }
+    }
+
+    // If loose at root or in arbitrary subfolder, but has Adobe internal folder or cache extension
+    if (isInternalFolder || isAdobeExt) {
+      const parts = rel.split('/').filter(Boolean);
+      const internalSub = parts.length > 1 ? parts.slice(0, -1).join('/') : null;
+      return {
+        isPremiere: true,
+        projectDirName: null,
+        internalSubPath: internalSub,
+      };
+    }
+
+    return {
+      isPremiere: false,
+      projectDirName: null,
+      internalSubPath: null,
+    };
+  };
+
   for (const file of files) {
     let targetFolder = '';
     let targetSubfolders: string[] = [];
     let hasRule = true;
     const ext = getFileExtension(file.name);
+    const premiereInfo = getPremiereInfo(file, ext);
+
+    if (premiereInfo.isPremiere) {
+      premiereFilesCount++;
+      file.isProjectInternal = true;
+    }
 
     if (model === 'project_template') {
-      const res = categorizeIntoProjectStructure(file.name, ext, activeRoot, ruleMap);
+      const res = categorizeIntoProjectStructure(file, ext, activeRoot, ruleMap, premiereInfo);
       targetFolder = res.targetFolder;
       targetSubfolders = res.targetSubfolders;
     } else if (model === 'client') {
       const clientName = extractClientFromFileName(file.name);
-      targetFolder = clientName;
-      targetSubfolders = [clientName];
+      if (premiereInfo.isPremiere) {
+        const sub = premiereInfo.internalSubPath ? `/${premiereInfo.internalSubPath}` : '';
+        targetFolder = `${clientName}/Projetos_Edicao${sub}`;
+      } else {
+        targetFolder = clientName;
+      }
+      targetSubfolders = targetFolder.split('/').filter(Boolean);
     } else if (model === 'date') {
       const d = new Date(file.lastModified || Date.now());
       const year = String(d.getFullYear());
@@ -379,9 +506,11 @@ export function planOrganization(
       const isEditFile = ['.prproj', '.aep', '.psd', '.ai', '.blend', '.c4d', '.fcpx'].includes(ext);
       const isDoc = ['.pdf', '.docx', '.xlsx', '.txt', '.csv', '.pptx'].includes(ext);
 
-      if (isEditFile) {
-        targetFolder = '02_TRABALHO/Projetos_Editaveis';
-        targetSubfolders = ['02_TRABALHO', 'Projetos_Editaveis'];
+      if (premiereInfo.isPremiere || isEditFile) {
+        const pName = premiereInfo.projectDirName ? `/${premiereInfo.projectDirName}` : '';
+        const subP = premiereInfo.internalSubPath ? `/${premiereInfo.internalSubPath}` : '';
+        targetFolder = `02_TRABALHO/Projetos_Editaveis${pName}${subP}`;
+        targetSubfolders = targetFolder.split('/').filter(Boolean);
       } else if (isVideoOrAudio || isImage) {
         targetFolder = '01_ARQUIVOS_BRUTOS';
         targetSubfolders = ['01_ARQUIVOS_BRUTOS'];
@@ -434,5 +563,7 @@ export function planOrganization(
     filesWithoutRule,
     plannedMoves,
     treeStructure,
+    hasPremiereProjects: premiereFilesCount > 0,
+    premiereFilesCount,
   };
 }
