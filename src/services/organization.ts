@@ -157,34 +157,21 @@ function categorizeIntoProjectStructure(
   // =========================================================================
   // 🎬 CRITICAL USER RULE: PREMIERE / VIDEO PROJECT BUNDLES & CACHES
   // Premiere projects contain internal auto-saves, video previews, peak audio
-  // files, and caches that MUST NOT be scattered into FOOTAGE, ASSETS or EXPORT.
-  // They must remain grouped inside 01_PROJETOS (under Premiere_AfterEffects).
+  // files, and caches that MUST NOT be scattered into FOOTAGE, ASSETS or EXPORT,
+  // NOR fragmented into dozens of subfolders.
+  // They must remain grouped in ONE single project folder:
+  // e.g. 01_PROJETOS/Premiere_AfterEffects
   // =========================================================================
   if (premiereInfo.isPremiere) {
     const activeSub = (projectFolder.children || []).filter((c) => c.enabled !== false);
-    const premiereSub = activeSub.find((s) => /premiere|after|video/i.test(s.name));
+    const premiereSub = activeSub.find((s) => /premiere|after|video|edit/i.test(s.name));
     const baseProjectDir = premiereSub
       ? `${projectFolder.name}/${premiereSub.name}`
       : projectFolder.name;
 
-    const pathSegments: string[] = baseProjectDir.split('/').filter(Boolean);
-
-    // If file belongs to a specific project folder (e.g. "Projeto_Comercial")
-    if (premiereInfo.projectDirName) {
-      pathSegments.push(premiereInfo.projectDirName);
-    }
-
-    // If it has internal subfolder structure (e.g. "Adobe Premiere Pro Video Previews")
-    if (premiereInfo.internalSubPath) {
-      for (const segment of premiereInfo.internalSubPath.split('/').filter(Boolean)) {
-        pathSegments.push(segment);
-      }
-    }
-
-    const fullTarget = pathSegments.join('/');
     return {
-      targetFolder: fullTarget,
-      targetSubfolders: pathSegments,
+      targetFolder: baseProjectDir,
+      targetSubfolders: baseProjectDir.split('/').filter(Boolean),
     };
   }
 
@@ -487,8 +474,7 @@ export function planOrganization(
     } else if (model === 'client') {
       const clientName = extractClientFromFileName(file.name);
       if (premiereInfo.isPremiere) {
-        const sub = premiereInfo.internalSubPath ? `/${premiereInfo.internalSubPath}` : '';
-        targetFolder = `${clientName}/Projetos_Edicao${sub}`;
+        targetFolder = `${clientName}/Projetos_Edicao`;
       } else {
         targetFolder = clientName;
       }
@@ -507,10 +493,8 @@ export function planOrganization(
       const isDoc = ['.pdf', '.docx', '.xlsx', '.txt', '.csv', '.pptx'].includes(ext);
 
       if (premiereInfo.isPremiere || isEditFile) {
-        const pName = premiereInfo.projectDirName ? `/${premiereInfo.projectDirName}` : '';
-        const subP = premiereInfo.internalSubPath ? `/${premiereInfo.internalSubPath}` : '';
-        targetFolder = `02_TRABALHO/Projetos_Editaveis${pName}${subP}`;
-        targetSubfolders = targetFolder.split('/').filter(Boolean);
+        targetFolder = '02_TRABALHO/Projetos_Editaveis';
+        targetSubfolders = ['02_TRABALHO', 'Projetos_Editaveis'];
       } else if (isVideoOrAudio || isImage) {
         targetFolder = '01_ARQUIVOS_BRUTOS';
         targetSubfolders = ['01_ARQUIVOS_BRUTOS'];

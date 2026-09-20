@@ -586,9 +586,9 @@ export function OrganizeDashboard({
             <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl px-4 py-3 flex items-start space-x-3 text-xs">
               <span className="text-base leading-none">🎬</span>
               <div className="flex-1 text-neutral-300">
-                <span className="font-semibold text-purple-300">Projeto do Premiere / After Effects Preservado:</span>
+                <span className="font-semibold text-purple-300">Projeto do Premiere Agrupado em Pasta Única:</span>
                 <p className="text-neutral-400 text-[11px] mt-0.5 leading-relaxed">
-                  Detectamos <strong className="text-white">{previewData.premiereFilesCount}</strong> arquivo(s) vinculados ao projeto do Premiere (Auto-Saves, Video/Audio Previews e Caches). Eles foram mantidos intactos dentro de <span className="font-mono text-purple-300">01_PROJETOS</span> e não serão espalhados em pastas de footage ou áudio.
+                  Detectamos <strong className="text-white">{previewData.premiereFilesCount}</strong> arquivo(s) do Premiere (Auto-Saves, Video/Audio Previews e Caches). Todos foram reunidos e agrupados em <strong className="text-purple-300">uma única pasta</strong> dentro de <span className="font-mono text-purple-300">01_PROJETOS</span>, sem espalhar nem criar dezenas de subpastas desnecessárias.
                 </p>
               </div>
             </div>
