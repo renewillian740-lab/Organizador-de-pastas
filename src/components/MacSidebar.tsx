@@ -3,8 +3,7 @@ import {
   Square,
   RotateCcw,
   Plus,
-  Trash2,
-  Check,
+  BookmarkCheck,
 } from 'lucide-react';
 import { FolderStats, FolderNode } from '../types';
 
@@ -16,6 +15,7 @@ interface MacSidebarProps {
   onNewRoot: () => void;
   onAddSubfolderToRoot: () => void;
   onResetToDefault: () => void;
+  onSaveTemplate: () => void;
   onExecuteMac: () => void;
   rootFolder: FolderNode;
 }
@@ -28,6 +28,7 @@ export function MacSidebar({
   onNewRoot,
   onAddSubfolderToRoot,
   onResetToDefault,
+  onSaveTemplate,
   onExecuteMac,
   rootFolder,
 }: MacSidebarProps) {
@@ -46,6 +47,24 @@ export function MacSidebar({
           </button>
         </div>
 
+        {/* Section: Salvar Modelo Personalizado */}
+        <div className="bg-emerald-950/30 p-3 rounded-xl border border-emerald-500/20 space-y-2">
+          <div className="text-[11px] font-semibold text-emerald-300 uppercase tracking-wider flex items-center space-x-1.5">
+            <BookmarkCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Modelo Personalizado</span>
+          </div>
+          <p className="text-[11px] text-neutral-400 leading-relaxed">
+            Salve suas pastas e nomes atuais para abri-los sempre que retornar.
+          </p>
+          <button
+            onClick={onSaveTemplate}
+            className="w-full py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition shadow-sm flex items-center justify-center space-x-1.5"
+          >
+            <BookmarkCheck className="w-3.5 h-3.5" />
+            <span>Salvar Meu Modelo</span>
+          </button>
+        </div>
+
         {/* Section: Escolha de Pastas */}
         <div className="bg-black/30 p-3 rounded-xl border border-white/5 space-y-3">
           <div className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider flex items-center justify-between">
@@ -54,10 +73,6 @@ export function MacSidebar({
               {stats.totalFolders} de {totalAvailable}
             </span>
           </div>
-
-          <p className="text-[11px] text-neutral-400 leading-relaxed">
-            Escolha exatamente quais pastas você quer que sejam criadas no seu Mac.
-          </p>
 
           <div className="grid grid-cols-2 gap-1.5">
             <button
@@ -101,32 +116,6 @@ export function MacSidebar({
             <RotateCcw className="w-3.5 h-3.5 text-neutral-400" />
             <span>Limpar e Começar do Zero</span>
           </button>
-        </div>
-
-        {/* Section: Resumo das Pastas Ativas */}
-        <div className="bg-black/20 p-3 rounded-xl border border-white/5 space-y-2">
-          <div className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
-            Resumo
-          </div>
-
-          <div className="space-y-1.5 text-xs">
-            <div className="flex items-center justify-between text-neutral-300">
-              <span className="text-neutral-400">Pasta Raiz:</span>
-              <span className="font-mono text-white text-[11px] truncate max-w-[120px]" title={rootFolder.name}>
-                {rootFolder.name}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between text-neutral-300">
-              <span className="text-neutral-400">Pastas marcadas:</span>
-              <span className="font-mono text-blue-400 font-semibold">{stats.totalFolders}</span>
-            </div>
-
-            <div className="flex items-center justify-between text-neutral-300">
-              <span className="text-neutral-400">Profundidade:</span>
-              <span className="font-mono text-purple-400">{stats.maxDepth} níveis</span>
-            </div>
-          </div>
         </div>
       </div>
 

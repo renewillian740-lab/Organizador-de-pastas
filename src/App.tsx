@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DEFAULT_ROOT_FOLDER } from './data/defaultStructure';
 import { FolderNode } from './types';
 import { calculateFolderStats } from './utils/macFolderUtils';
@@ -9,13 +9,25 @@ import { FinderColumnView } from './components/FinderColumnView';
 import { MacTerminalView } from './components/MacTerminalView';
 import { MacActionModal } from './components/MacActionModal';
 
+const STORAGE_KEY = 'mac_folder_custom_template_v1';
+
 export function App() {
-  const [rootFolder, setRootFolder] = useState<FolderNode>(() =>
-    JSON.parse(JSON.stringify(DEFAULT_ROOT_FOLDER))
-  );
+  const [rootFolder, setRootFolder] = useState<FolderNode>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return JSON.parse(JSON.stringify(DEFAULT_ROOT_FOLDER));
+  });
+
   const [activeTab, setActiveTab] = useState<'tree' | 'columns' | 'terminal'>('tree');
   const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>();
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
   const stats = calculateFolderStats(rootFolder);
 
@@ -30,6 +42,18 @@ export function App() {
     return c;
   };
   const totalAvailable = countAllNodes(rootFolder);
+
+  // Save current structure as user's custom default template
+  const handleSaveCustomTemplate = () => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(rootFolder));
+      setSaveSuccessMsg('Modelo personalizado salvo com sucesso!');
+      setTimeout(() => setSaveSuccessMsg(null), 3000);
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao salvar modelo no navegador.');
+    }
+  };
 
   // Select all folders
   const handleSelectAll = () => {
@@ -101,11 +125,22 @@ export function App() {
 
   // Reset to default
   const handleResetToDefault = () => {
-    setRootFolder(JSON.parse(JSON.stringify(DEFAULT_ROOT_FOLDER)));
+    if (confirm('Deseja restaurar o modelo padrão original do sistema?')) {
+      localStorage.removeItem(STORAGE_KEY);
+      setRootFolder(JSON.parse(JSON.stringify(DEFAULT_ROOT_FOLDER)));
+    }
   };
 
   return (
-    <div className="min-h-screen bg-[#0d0f14] text-neutral-100 flex flex-col items-center justify-center p-2 sm:p-4 md:p-6 select-none">
+    <div className="min-h-screen bg-[#0d0f14] text-neutral-100 flex flex-col items-center justify-center p-2 sm:p-4 md:p-6 select-none relative">
+      {/* Toast Notification for Saving */}
+      {saveSuccessMsg && (
+        <div className="fixed top-5 z-50 bg-emerald-600 text-white px-4 py-2.5 rounded-xl shadow-2xl border border-emerald-400 text-xs flex items-center space-x-2 animate-bounce">
+          <span>💾</span>
+          <span className="font-medium">{saveSuccessMsg}</span>
+        </div>
+      )}
+
       {/* Background ambient lighting */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute -top-40 left-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl" />
@@ -121,6 +156,7 @@ export function App() {
           rootFolderName={rootFolder.name}
           selectedFoldersCount={stats.totalFolders}
           onExecuteMac={() => setIsActionModalOpen(true)}
+          onSaveTemplate={handleSaveCustomTemplate}
         />
 
         {/* Window Body: Sidebar + Main Content View */}
@@ -135,6 +171,7 @@ export function App() {
               onNewRoot={handleNewRoot}
               onAddSubfolderToRoot={handleAddSubfolderToRoot}
               onResetToDefault={handleResetToDefault}
+              onSaveTemplate={handleSaveCustomTemplate}
               onExecuteMac={() => setIsActionModalOpen(true)}
               rootFolder={rootFolder}
             />

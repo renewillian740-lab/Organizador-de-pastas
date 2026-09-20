@@ -1,4 +1,4 @@
-import { FolderTree, Columns, Terminal, CheckSquare } from 'lucide-react';
+import { FolderTree, Columns, Terminal, CheckSquare, BookmarkCheck } from 'lucide-react';
 
 interface MacTitleBarProps {
   activeTab: 'tree' | 'columns' | 'terminal';
@@ -6,6 +6,7 @@ interface MacTitleBarProps {
   rootFolderName: string;
   selectedFoldersCount: number;
   onExecuteMac: () => void;
+  onSaveTemplate: () => void;
 }
 
 export function MacTitleBar({
@@ -14,6 +15,7 @@ export function MacTitleBar({
   rootFolderName,
   selectedFoldersCount,
   onExecuteMac,
+  onSaveTemplate,
 }: MacTitleBarProps) {
   return (
     <header className="bg-neutral-900/95 backdrop-blur-md border-b border-white/10 px-4 py-3 select-none flex flex-wrap items-center justify-between gap-3 text-sm">
@@ -29,7 +31,7 @@ export function MacTitleBar({
         {/* Current Root Folder pill */}
         <div className="flex items-center space-x-2 bg-white/5 border border-white/10 px-3 py-1 rounded-md text-neutral-200">
           <span className="text-blue-400">📁</span>
-          <span className="font-medium text-xs md:text-sm truncate max-w-[180px] md:max-w-[260px]" title={rootFolderName}>
+          <span className="font-medium text-xs md:text-sm truncate max-w-[160px] md:max-w-[220px]" title={rootFolderName}>
             {rootFolderName}
           </span>
           <span className="text-[11px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-mono flex items-center space-x-1">
@@ -81,8 +83,18 @@ export function MacTitleBar({
         </button>
       </div>
 
-      {/* Right: Primary Action Button */}
+      {/* Right: Save Template & Execute Action Buttons */}
       <div className="flex items-center space-x-2">
+        <button
+          id="btn-save-template"
+          onClick={onSaveTemplate}
+          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 text-neutral-200 font-medium text-xs border border-white/15 transition active:scale-95"
+          title="Salvar esta estrutura atual como meu modelo personalizado padrão"
+        >
+          <BookmarkCheck className="w-3.5 h-3.5 text-emerald-400" />
+          <span className="hidden sm:inline">Salvar Modelo</span>
+        </button>
+
         <button
           id="btn-execute-mac"
           onClick={onExecuteMac}
@@ -90,7 +102,7 @@ export function MacTitleBar({
           className="flex items-center space-x-2 px-3.5 py-1.5 rounded-md bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 disabled:opacity-40 disabled:pointer-events-none text-white font-medium text-xs shadow-md shadow-blue-500/20 transition active:scale-95"
         >
           <span>🍏</span>
-          <span>Criar Pastas no Mac</span>
+          <span>Criar no Mac</span>
         </button>
       </div>
     </header>
